@@ -1,0 +1,48 @@
+# This file contains production-specific configuration
+# It merges with app-config.yaml when NODE_ENV=production
+#
+# NOTE: In Kubernetes deployments, these values are typically
+# overridden by Helm chart's `backstage.appConfig` section.
+# See your Helm values.yaml for actual production configuration.
+
+app:
+  # Will be overridden by Helm appConfig
+  title: "Backstage Developer Portal"
+  baseUrl: https://backstage.example.com
+
+organization:
+  name: Example Org
+
+backend:
+  baseUrl: https://backstage.example.com
+  listen: ':7007'
+  auth:
+    keys:
+      - secret: ${BACKEND_SECRET}
+  database:
+    client: pg
+    connection:
+      host: ${POSTGRES_HOST}
+      port: ${POSTGRES_PORT}
+      user: ${POSTGRES_USER}
+      password: ${POSTGRES_PASSWORD}
+
+# Catalog auto-discovery from Gitea/Forgejo
+catalog:
+  providers:
+    gitea:
+      your-org:
+        host: git.example.com
+        organization: your-org
+        catalogPath: .backstage/catalog-info.yml
+        schedule:
+          frequency: { minutes: 30 }
+          timeout: { minutes: 3 }
+  # Disable default example locations in production
+  locations: []
+
+# Gitea/Forgejo integration
+integrations:
+  gitea:
+    - host: git.example.com
+      token: ${FORGEJO_TOKEN}
