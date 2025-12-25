@@ -46,10 +46,8 @@ backend.add(import('@backstage/plugin-catalog-backend-module-gitea'));
 
 // permission plugin
 backend.add(import('@backstage/plugin-permission-backend'));
-// See https://backstage.io/docs/permissions/getting-started for how to create your own permission policy
-backend.add(
-  import('@backstage/plugin-permission-backend-module-allow-all-policy'),
-);
+// Custom policy: Architects могут всё, остальные только читают
+backend.add(import('./customPermissionPolicy'));
 
 // search plugin
 backend.add(import('@backstage/plugin-search-backend'));

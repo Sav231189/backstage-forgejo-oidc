@@ -62,9 +62,20 @@ This custom build fixes the frontend to work with **any OIDC provider** (Forgejo
 - ✅ **OIDC Provider** - `@backstage/plugin-auth-backend-module-oidc-provider`
 - ✅ **Guest Provider** - `@backstage/plugin-auth-backend-module-guest-provider`
 - ✅ **Permission System** - `@backstage/plugin-permission-backend`
-- ✅ **Allow-All Policy** - `@backstage/plugin-permission-backend-module-allow-all-policy`
+- ✅ **Custom Permission Policy** - `packages/backend/src/customPermissionPolicy.ts`
 
-> 💡 **User Management**: Backstage uses **catalog entities** for users. For RBAC (Role-Based Access Control), install the official `@backstage/plugin-permission-backend-module-rbac` plugin separately.
+> 💡 **Permission Model (Annotation-based)**: 
+> - Права определяются **аннотациями на User entity**
+> - Любой пользователь Forgejo может войти и **читать** каталог
+> - Дополнительные права даются через `users.yaml`
+> 
+> | Аннотация | Права |
+> |-----------|-------|
+> | `backstage.io/admin: "true"` | Полный доступ |
+> | `backstage.io/can-deploy: "true"` | ArgoCD sync, Scaffolder |
+> | `backstage.io/can-create-resources: "true"` | Создание Resource |
+> | `backstage.io/can-create-templates: "true"` | Работа с Templates |
+> | *(без аннотаций)* | Только чтение |
 
 ### 📚 Catalog & Discovery
 - ✅ **Catalog Backend** - `@backstage/plugin-catalog-backend`
@@ -193,7 +204,24 @@ backend.add(import('@backstage/plugin-catalog-backend-module-gitea'));
 backend.add(import('@backstage/plugin-scaffolder-backend-module-gitea'));
 ```
 
-**All dependencies already in package.json** - see full list in "Production Plugins Included" section above.
+#### Permission System
+
+Added Custom Permission Policy (`packages/backend/src/customPermissionPolicy.ts`):
+
+```typescript
+// permission plugin
+backend.add(import('@backstage/plugin-permission-backend'));
+// Custom policy: Architects can deploy, Developers read-only
+backend.add(import('./customPermissionPolicy'));
+```
+
+**Permission Policy Logic (Annotation-based):**
+- Читает аннотации с User entity из каталога
+- `backstage.io/admin: "true"` → Full access
+- `backstage.io/can-deploy: "true"` → ArgoCD sync, Scaffolder execute
+- `backstage.io/can-create-resources: "true"` → Resource CRUD
+- `backstage.io/can-create-templates: "true"` → Template operations
+- No annotations → Read-only
 
 ### 3. Configuration
 
@@ -219,6 +247,55 @@ integrations:
   gitea:
     - host: git.example.com
       token: ${FORGEJO_TOKEN}
+
+# Enable Permission Framework
+permission:
+  enabled: true
+```
+
+#### Creating Users with Permissions
+
+Create `users.yaml` in your infrastructure repository:
+
+**User Example with Admin permissions:**
+```yaml
+apiVersion: backstage.io/v1alpha1
+kind: User
+metadata:
+  name: admin  # Must match email prefix (admin@example.com)
+  annotations:
+    backstage.io/admin: "true"  # Full access!
+spec:
+  profile:
+    displayName: Admin User
+    email: admin@example.com
+```
+
+**User Example with Deploy permissions:**
+```yaml
+apiVersion: backstage.io/v1alpha1
+kind: User
+metadata:
+  name: devops
+  annotations:
+    backstage.io/can-deploy: "true"
+    backstage.io/can-create-resources: "true"
+spec:
+  profile:
+    displayName: DevOps Engineer
+    email: devops@example.com
+```
+
+**User without annotations = Read-only access**
+
+Configure location in `backstage-values.yml`:
+```yaml
+catalog:
+  locations:
+    - type: url
+      target: https://git.example.com/org/infrastructure/raw/branch/main/backstage/users.yaml
+      rules:
+        - allow: [User]
 ```
 
 ---
@@ -270,6 +347,43 @@ kubectl create secret generic backstage-secrets \
   --from-literal=FORGEJO_TOKEN='<forgejo-personal-access-token>' \
   --from-literal=POSTGRES_PASSWORD='<postgres-password>'
 ```
+
+### 2.5. Create Users with Permissions
+
+Create `users.yaml` in your infrastructure repository:
+
+**Example: Admin user (full access)**
+
+```yaml
+apiVersion: backstage.io/v1alpha1
+kind: User
+metadata:
+  name: your-username  # Must match email prefix before @
+  annotations:
+    backstage.io/admin: "true"
+spec:
+  profile:
+    displayName: Your Name
+    email: your-username@example.com
+```
+
+**Example: DevOps user (deploy + resources)**
+
+```yaml
+apiVersion: backstage.io/v1alpha1
+kind: User
+metadata:
+  name: devops-user
+  annotations:
+    backstage.io/can-deploy: "true"
+    backstage.io/can-create-resources: "true"
+spec:
+  profile:
+    displayName: DevOps Engineer
+    email: devops-user@example.com
+```
+
+> 💡 **Note:** Users without annotations can only **read** the catalog.
 
 ### 3. Deploy with Helm
 
@@ -340,6 +454,10 @@ backstage:
             catalogPath: .backstage/catalog-info.yml
             schedule:
               frequency: { minutes: 30 }
+    
+    # Enable Permission Framework
+    permission:
+      enabled: true
 
 ingress:
   enabled: true
